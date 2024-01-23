@@ -18,7 +18,8 @@ class KITTI_Loader(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, seed=None, train=0, sequence_length=3, transform=None, data_degradation=0, data_random=True):
+    def __init__(self, root, seed=None, train=0, sequence_length=3,
+                 transform=None, data_degradation=0, data_random=True):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -26,11 +27,11 @@ class KITTI_Loader(data.Dataset):
         if train == 0:
             scene_list_path = self.root / 'train.txt'
         if train == 1:
-            scene_list_path = self.root/'val.txt'
+            scene_list_path = self.root / 'val.txt'
         if train == 2:
-            scene_list_path = self.root/'test.txt'
+            scene_list_path = self.root / 'test.txt'
 
-        self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
+        self.scenes = [self.root / folder[:-1] for folder in open(scene_list_path)]
         self.transform = transform
         # degradation mode
         # 0: normal data 1: occlusion 2: blur 3: image missing 4: imu noise and bias 5: imu missing
@@ -46,7 +47,7 @@ class KITTI_Loader(data.Dataset):
 
     def crawl_folders(self, sequence_length):
         sequence_set = []
-        demi_length = (sequence_length-1)//2
+        demi_length = (sequence_length - 1) // 2
         shifts = list(range(-demi_length, demi_length + 1))
 
         for scene in self.scenes:
@@ -256,12 +257,12 @@ def load_as_float(path, label):
     img = imread(path).astype(np.float32)
 
     if label == 1:
-        height_start = int(np.random.rand(1)*128)
+        height_start = int(np.random.rand(1) * 128)
 
-        width_start = int(np.random.rand(1)*384)
+        width_start = int(np.random.rand(1) * 384)
 
-        for ind_h in range(height_start, height_start+128):
-            for ind_w in range(width_start, width_start+128):
+        for ind_h in range(height_start, height_start + 128):
+            for ind_w in range(width_start, width_start + 128):
                 for ind_c in range(0, 3):
                     img[ind_h, ind_w, ind_c] = 0
 
@@ -291,4 +292,3 @@ def load_as_float(path, label):
         img = out
 
     return img
-

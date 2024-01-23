@@ -1,50 +1,42 @@
-import os
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="3"
-
-import argparse
-import time
-import csv
-import numpy as np
-import torch
-from torch.autograd import Variable
-import torch.backends.cudnn as cudnn
-import torch.optim
-import torch.utils.data
-import custom_transforms
-from models import FlowNet, RecFeat, PoseRegressor, RecImu, Fc_Flownet, Hard_Mask, Soft_Mask
-from utils import save_path_formatter, mat2euler
-from logger import AverageMeter
-from itertools import chain
-import torch.nn.functional as F
 from data_loader import KITTI_Loader
+import torch.nn.functional as F
+from itertools import chain
+from logger import AverageMeter
+from utils import save_path_formatter, mat2euler
+from models import FlowNet, RecFeat, PoseRegressor, RecImu, Fc_Flownet, Hard_Mask, Soft_Mask
+import custom_transforms
+import torch.utils.data
+import torch.optim
+import torch.backends.cudnn as cudnn
+from torch.autograd import Variable
+import torch
+import numpy as np
+import csv
+import time
+import argparse
+import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 
 parser = argparse.ArgumentParser(description='Selective Sensor Fusion on KITTI',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('data', metavar='DIR',
-                    help='path to dataset')
+parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
-parser.add_argument('--rotation-mode', type=str, choices=['euler', 'quat'], default='euler',
+parser.add_argument('--rotation-mode', default='euler', type=str, choices=['euler', 'quat'],
                     help='rotation mode for PoseExpnet : euler (yaw,pitch,roll) or quaternion (last 3 coefficients)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers')
-parser.add_argument('--epochs', default=100, type=int, metavar='N',
-                    help='number of total epochs to run')
+parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
+parser.add_argument('--epochs', default=100, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--epoch-size', default=0, type=int, metavar='N',
                     help='manual epoch size (will match dataset size if not set)')
-parser.add_argument('-b', '--batch-size', default=4, type=int,
-                    metavar='N', help='mini-batch size')
-parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float,
-                    metavar='LR', help='initial learning rate')
+parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='mini-batch size')
+parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum for sgd, alpha parameter for adam')
-parser.add_argument('--beta', default=0.999, type=float, metavar='M',
-                    help='beta parameters for adam')
-parser.add_argument('--weight-decay', '--wd', default=0, type=float,
-                    metavar='W', help='weight decay')
-parser.add_argument('--print-freq', default=10, type=int,
-                    metavar='N', help='print frequency')
+parser.add_argument('--beta', default=0.999, type=float, metavar='M', help='beta parameters for adam')
+parser.add_argument('--weight-decay', '--wd', default=0, type=float, metavar='W', help='weight decay')
+parser.add_argument('--print-freq', default=10, type=int, metavar='N', help='print frequency')
 parser.add_argument('--seed', default=0, type=int, help='seed for random functions, and network initialization')
 parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH',
                     help='csv where to save per-epoch train and valid stats')
@@ -67,17 +59,16 @@ def main():
     # set saving path
     abs_path = ''
     save_path = save_path_formatter(args, parser)
-    args.save_path = abs_path + 'checkpoints'/save_path
+    args.save_path = abs_path + 'checkpoints' / save_path
     print('=> will save everything to {}'.format(args.save_path))
-    if not os.path.exists(args.save_path+'/imgs/'):
-        os.makedirs(args.save_path+'/imgs/')
-    if not os.path.exists(args.save_path+'/models/'):
-        os.makedirs(args.save_path+'/models/')
+    if not os.path.exists(args.save_path + '/imgs/'):
+        os.makedirs(args.save_path + '/imgs/')
+    if not os.path.exists(args.save_path + '/models/'):
+        os.makedirs(args.save_path + '/models/')
     torch.manual_seed(args.seed)
 
     # image transform
-    normalize = custom_transforms.Normalize(mean=[0, 0, 0],
-                                            std=[255, 255, 255])
+    normalize = custom_transforms.Normalize(mean=[0, 0, 0], std=[255, 255, 255])
     normalize2 = custom_transforms.Normalize(mean=[0.411, 0.432, 0.45], std=[1, 1, 1])
     input_transform = custom_transforms.Compose([
         custom_transforms.ArrayToTensor(),
@@ -137,34 +128,34 @@ def main():
 
     if fusion_mode == 0:
         feature_ext = FlowNet(args.batch_size).cuda()
-        fc_flownet = Fc_Flownet(32 * 1024, feature_dim*2).cuda()
-        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
+        fc_flownet = Fc_Flownet(32 * 1024, feature_dim * 2).cuda()
         rec_imu = RecImu(6, int(feature_dim / 2), args.batch_size, 2, feature_dim).cuda()
-        selectfusion = Hard_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        select_fusion = Hard_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         pose_net = PoseRegressor(feature_dim * 2).cuda()
 
     if fusion_mode == 1:
         feature_ext = FlowNet(args.batch_size).cuda()
         fc_flownet = Fc_Flownet(32 * 1024, feature_dim).cuda()
-        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         rec_imu = RecImu(6, int(feature_dim / 2), args.batch_size, 2, feature_dim).cuda()
-        selectfusion = Hard_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        select_fusion = Hard_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         pose_net = PoseRegressor(feature_dim * 2).cuda()
 
     if fusion_mode == 2:
         feature_ext = FlowNet(args.batch_size).cuda()
         fc_flownet = Fc_Flownet(32 * 1024, feature_dim).cuda()
-        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         rec_imu = RecImu(6, int(feature_dim / 2), args.batch_size, 2, feature_dim).cuda()
-        selectfusion = Soft_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        select_fusion = Soft_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         pose_net = PoseRegressor(feature_dim * 2).cuda()
 
     if fusion_mode == 3:
         feature_ext = FlowNet(args.batch_size).cuda()
         fc_flownet = Fc_Flownet(32 * 1024, feature_dim).cuda()
-        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         rec_imu = RecImu(6, int(feature_dim / 2), args.batch_size, 2, feature_dim).cuda()
-        selectfusion = Hard_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        select_fusion = Hard_Mask(feature_dim * 2, feature_dim * 2).cuda()
+        rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         pose_net = PoseRegressor(feature_dim * 2).cuda()
 
     pose_net.init_weights()
@@ -185,12 +176,12 @@ def main():
     pose_net = torch.nn.DataParallel(pose_net)
     rec_imu = torch.nn.DataParallel(rec_imu)
     fc_flownet = torch.nn.DataParallel(fc_flownet)
-    selectfusion = torch.nn.DataParallel(selectfusion)
+    select_fusion = torch.nn.DataParallel(select_fusion)
 
     print('=> setting adam solver')
 
-    parameters = chain(rec_feat.parameters(), rec_imu.parameters(), fc_flownet.parameters(), pose_net.parameters(),
-                       selectfusion.parameters())
+    parameters = chain(rec_feat.parameters(), rec_imu.parameters(), fc_flownet.parameters(),
+                       pose_net.parameters(), select_fusion.parameters())
     optimizer = torch.optim.Adam(parameters, args.lr,
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)
@@ -211,18 +202,18 @@ def main():
 
         # train for one epoch
         train_loss, pose_loss, euler_loss, temp = train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net,
-                                                        fc_flownet, selectfusion, optimizer, epoch, fusion_mode)
+                                                        fc_flownet, select_fusion, optimizer, epoch, fusion_mode)
 
         temp = 0.5
 
         # evaluate on validation set
         val_loss, val_pose_loss, val_euler_loss =\
-            validate(args, val_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flownet, selectfusion, temp, epoch,
+            validate(args, val_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flownet, select_fusion, temp, epoch,
                      fusion_mode)
 
         # evaluate on validation set
         test(args, test_loader, feature_ext, rec_feat, rec_imu, pose_net,
-             fc_flownet, selectfusion, temp, epoch, fusion_mode)
+             fc_flownet, select_fusion, temp, epoch, fusion_mode)
 
         if val_pose_loss < best_tra:
             best_tra = val_pose_loss
@@ -251,7 +242,7 @@ def main():
             torch.save(rec_imu.module.state_dict(), fn)
 
             fn = args.save_path + '/models/selectfusion_' + str(epoch) + '.pth'
-            torch.save(selectfusion.module.state_dict(), fn)
+            torch.save(select_fusion.module.state_dict(), fn)
             print('Model has been saved')
 
         with open(args.save_path / args.log_summary, 'a') as csvfile:
@@ -259,8 +250,8 @@ def main():
             writer.writerow([train_loss, pose_loss, euler_loss, val_loss, val_pose_loss, val_euler_loss])
 
 
-def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flownet, selectfusion, optimizer, epoch,
-          fusion_mode):
+def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flownet, select_fusion,
+          optimizer, epoch, fusion_mode):
 
     global n_iter
     batch_time = AverageMeter()
@@ -274,7 +265,7 @@ def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flown
     rec_imu.train()
     pose_net.train()
     fc_flownet.train()
-    selectfusion.train()
+    select_fusion.train()
 
     end = time.time()
 
@@ -301,9 +292,9 @@ def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flown
         euler_loss = 0
 
         # compute output
-        for j in range(0, len(imgs)-1):
+        for j in range(0, len(imgs) - 1):
 
-            tgt_img = imgs[j+1]
+            tgt_img = imgs[j + 1]
             ref_img = imgs[j]
 
             imu = imus[j]
@@ -320,17 +311,14 @@ def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flown
             rec_imu.module.hidden = rec_imu.module.init_hidden()
 
             with torch.no_grad():
-
                 raw_feature_vision = feature_ext(tgt_img_var, ref_img_var)
 
             feature_vision = fc_flownet(raw_feature_vision)
 
             if fusion_mode == 0:
-
                 feature_weighted = feature_vision
 
             else:
-
                 # extract imu features
                 feature_imu = rec_imu(imu_var)
 
@@ -338,19 +326,14 @@ def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flown
                 feature = torch.cat([feature_vision, feature_imu], 2)
 
                 if fusion_mode == 1:
-
                     feature_weighted = feature
-
                 else:
-
                     if fusion_mode == 2:
-                        mask = selectfusion(feature)
-
+                        mask = select_fusion(feature)
                     else:
-                        mask = selectfusion(feature, temp)
+                        mask = select_fusion(feature, temp)
 
                     feature_weighted = torch.cat([feature_vision, feature_imu], 2) * mask
-
 
             # recurrent features
             feature_new = rec_feat(feature_weighted)
@@ -370,11 +353,8 @@ def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flown
                 pose_truth = torch.FloatTensor(trans_pose[:, :, -1])
 
             rot_mat = torch.FloatTensor(trans_pose[:, :, :3]).cuda()
-
             euler = mat2euler(rot_mat)
-
             euler_loss += F.mse_loss(euler, pose[:, 3:])
-
             pose_loss += F.mse_loss(pose_truth, pose[:, :3])
 
         euler_loss /= (len(imgs) - 1)
@@ -398,7 +378,6 @@ def train(args, train_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flown
         end = time.time()
 
         if i % args.print_freq == 0:
-
             print('Train: Epoch [{}/{}] Step [{}/{}]: Time {} Data {} Loss {:.5} '
                   'Pose {:.5} Euler {:.5}'.
                   format(epoch + 1, args.epochs, i + 1, epoch_size,
@@ -472,32 +451,22 @@ def validate(args, val_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flow
             with torch.no_grad():
 
                 rec_imu.module.hidden = rec_imu.module.init_hidden()
-
                 raw_feature_vision = feature_ext(tgt_img_var, ref_img_var)
-
                 feature_vision = fc_flownet(raw_feature_vision)
 
                 if fusion_mode == 0:
-
                     feature_weighted = feature_vision
-
                 else:
-
                     # extract imu features
                     feature_imu = rec_imu(imu_var)
-
                     # concatenate visual and imu features
                     feature = torch.cat([feature_vision, feature_imu], 2)
 
                     if fusion_mode == 1:
-
                         feature_weighted = feature
-
                     else:
-
                         if fusion_mode == 2:
                             mask = selectfusion(feature)
-
                         else:
                             mask = selectfusion(feature, temp)
 
@@ -520,11 +489,8 @@ def validate(args, val_loader, feature_ext, rec_feat, rec_imu, pose_net, fc_flow
                 pose_truth = torch.FloatTensor(trans_pose[:, :, -1])
 
             rot_mat = torch.FloatTensor(trans_pose[:, :, :3]).cuda()
-
             euler = mat2euler(rot_mat)
-
             euler_loss += F.mse_loss(euler, pose[:, 3:])
-
             pose_loss += F.mse_loss(pose_truth, pose[:, :3])
 
         euler_loss /= (len(imgs) - 1)
@@ -615,32 +581,22 @@ def test(args, test_loader, feature_ext, rec_feat, rec_imu, pose_net,
             with torch.no_grad():
 
                 rec_imu.module.hidden = rec_imu.module.init_test_hidden()
-
                 raw_feature_vision = feature_ext(tgt_img_var, ref_img_var)
-
                 feature_vision = fc_flownet(raw_feature_vision)
 
                 if fusion_mode == 0:
-
                     feature_weighted = feature_vision
-
                 else:
-
                     # extract imu features
                     feature_imu = rec_imu(imu_var)
-
                     # concatenate visual and imu features
                     feature = torch.cat([feature_vision, feature_imu], 2)
 
                     if fusion_mode == 1:
-
                         feature_weighted = feature
-
                     else:
-
                         if fusion_mode == 2:
                             mask = selectfusion(feature)
-
                         else:
                             mask = selectfusion(feature, temp)
 

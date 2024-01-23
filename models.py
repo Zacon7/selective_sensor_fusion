@@ -7,14 +7,16 @@ import torch.nn.functional as F
 def conv(batchNorm, in_planes, out_planes, kernel_size=3, stride=1):
     if batchNorm:
         return nn.Sequential(
-            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=(kernel_size-1)//2, bias=False),
+            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride,
+                      padding=(kernel_size - 1) // 2, bias=False),
             nn.BatchNorm2d(out_planes),
-            nn.LeakyReLU(0.1,inplace=True)
+            nn.LeakyReLU(0.1, inplace=True)
         )
     else:
         return nn.Sequential(
-            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=(kernel_size-1)//2, bias=True),
-            nn.LeakyReLU(0.1,inplace=True)
+            nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride,
+                      padding=(kernel_size - 1) // 2, bias=True),
+            nn.LeakyReLU(0.1, inplace=True)
         )
 
 
@@ -26,13 +28,13 @@ def upconv(in_planes, out_planes):
 
 
 def predict_flow(in_planes):
-    return nn.Conv2d(in_planes,2,kernel_size=3,stride=1,padding=1,bias=True)
+    return nn.Conv2d(in_planes, 2, kernel_size=3, stride=1, padding=1, bias=True)
 
 
 def deconv(in_planes, out_planes):
     return nn.Sequential(
         nn.ConvTranspose2d(in_planes, out_planes, kernel_size=4, stride=2, padding=1, bias=True),
-        nn.LeakyReLU(0.1,inplace=True)
+        nn.LeakyReLU(0.1, inplace=True)
     )
 
 
@@ -95,88 +97,6 @@ class FlowNet(nn.Module):
         return features
 
 
-class RecFeat(nn.Module):
-
-    def __init__(self, x_dim, h_dim, batch_size, n_layers):
-
-        super(RecFeat, self).__init__()
-
-        self.x_dim = x_dim
-        self.h_dim = h_dim
-        self.output_dim = h_dim
-        self.n_layers = n_layers
-        self.lstm = nn.LSTM(input_size=x_dim, hidden_size=h_dim, num_layers=n_layers, dropout=0.2)
-        self.batch_size = batch_size
-        self.dropout = nn.Dropout(0.2)
-        self.hidden = self.init_hidden()
-
-    def init_hidden(self):
-        if torch.cuda.is_available():
-            return (Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)).cuda(),
-                    Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)).cuda())
-        else:
-            return (Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)),
-                    Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)))
-
-    def init_test_hidden(self):
-        if torch.cuda.is_available():
-            return (Variable(torch.zeros(self.n_layers, 1, self.h_dim)).cuda(),
-                    Variable(torch.zeros(self.n_layers, 1, self.h_dim)).cuda())
-        else:
-            return (Variable(torch.zeros(self.n_layers, 1, self.h_dim)),
-                    Variable(torch.zeros(self.n_layers, 1, self.h_dim)))
-
-    def forward(self, x):
-
-        lstm_out, self.hidden = self.lstm(x, self.hidden)
-        lstm_out = self.dropout(lstm_out)
-        lstm_out = lstm_out.view(-1, self.h_dim)
-
-        return lstm_out
-
-
-class RecImu(nn.Module):
-
-    def __init__(self, x_dim, h_dim, batch_size, n_layers, output_dim):
-
-        super(RecImu, self).__init__()
-
-        self.x_dim = x_dim
-        self.h_dim = h_dim
-        self.n_layers = n_layers
-        self.lstm = nn.LSTM(input_size=x_dim, hidden_size=h_dim, num_layers=n_layers, dropout=0.2, bidirectional=True)
-        self.batch_size = batch_size
-        self.dropout = nn.Dropout(0.2)
-        self.hidden = self.init_hidden()
-        self.output_dim = output_dim
-
-    def init_hidden(self):
-        if torch.cuda.is_available():
-            return (Variable(torch.zeros(self.n_layers*2, self.batch_size, self.h_dim)).cuda(),
-                    Variable(torch.zeros(self.n_layers*2, self.batch_size, self.h_dim)).cuda())
-        else:
-            return (Variable(torch.zeros(self.n_layers*2, self.batch_size, self.h_dim)),
-                    Variable(torch.zeros(self.n_layers*2, self.batch_size, self.h_dim)))
-
-    def init_test_hidden(self):
-        if torch.cuda.is_available():
-            return (Variable(torch.zeros(self.n_layers*2, 1, self.h_dim)).cuda(),
-                    Variable(torch.zeros(self.n_layers*2, 1, self.h_dim)).cuda())
-        else:
-            return (Variable(torch.zeros(self.n_layers*2, 1, self.h_dim)),
-                    Variable(torch.zeros(self.n_layers*2, 1, self.h_dim)))
-
-    def forward(self, x):
-
-        lstm_out, self.hidden = self.lstm(x, self.hidden)
-        #lstm_out = self.dropout(lstm_out)
-        result = lstm_out[-1].view(-1, self.h_dim * 2)
-
-        result = result.view(1, -1, self.output_dim)
-
-        return result
-
-
 class Fc_Flownet(nn.Module):
 
     def __init__(self, input_dim, output_dim):
@@ -204,9 +124,84 @@ class Fc_Flownet(nn.Module):
 
         feat_new = self.fc(feat).view(1, -1, self.output_dim)
 
-        #feat_new = self.dropout(feat_new)
+        # feat_new = self.dropout(feat_new)
 
         return feat_new
+
+
+class RecImu(nn.Module):
+
+    def __init__(self, x_dim, h_dim, batch_size, n_layers, output_dim):
+
+        super(RecImu, self).__init__()
+
+        self.x_dim = x_dim
+        self.h_dim = h_dim
+        self.n_layers = n_layers
+        self.lstm = nn.LSTM(input_size=x_dim, hidden_size=h_dim, num_layers=n_layers, dropout=0.2, bidirectional=True)
+        self.batch_size = batch_size
+        self.dropout = nn.Dropout(0.2)
+        self.hidden = self.init_hidden()
+        self.output_dim = output_dim
+
+    def init_hidden(self):
+        if torch.cuda.is_available():
+            return (Variable(torch.zeros(self.n_layers * 2, self.batch_size, self.h_dim)).cuda(),
+                    Variable(torch.zeros(self.n_layers * 2, self.batch_size, self.h_dim)).cuda())
+        else:
+            return (Variable(torch.zeros(self.n_layers * 2, self.batch_size, self.h_dim)),
+                    Variable(torch.zeros(self.n_layers * 2, self.batch_size, self.h_dim)))
+
+    def init_test_hidden(self):
+        if torch.cuda.is_available():
+            return (Variable(torch.zeros(self.n_layers * 2, 1, self.h_dim)).cuda(),
+                    Variable(torch.zeros(self.n_layers * 2, 1, self.h_dim)).cuda())
+        else:
+            return (Variable(torch.zeros(self.n_layers * 2, 1, self.h_dim)),
+                    Variable(torch.zeros(self.n_layers * 2, 1, self.h_dim)))
+
+    def forward(self, x):
+
+        lstm_out, self.hidden = self.lstm(x, self.hidden)
+        # lstm_out = self.dropout(lstm_out)
+        result = lstm_out[-1].view(-1, self.h_dim * 2)
+
+        result = result.view(1, -1, self.output_dim)
+
+        return result
+
+
+class Soft_Mask(nn.Module):
+
+    def __init__(self, input_dim, output_dim):
+        super(Soft_Mask, self).__init__()
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+        self.fc = nn.Sequential(
+            nn.Linear(self.input_dim, self.output_dim),
+            nn.Sigmoid()
+        )
+
+        self.dropout = nn.Dropout(0.2)
+
+    def forward(self, feat):
+
+        feat = feat.view(-1, self.input_dim)
+
+        feat_new = self.fc(feat).view(1, -1, self.output_dim)
+
+        # feat_new = self.dropout(feat_new)
+
+        return feat_new
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
 
 
 def sample_gumbel(shape, eps=1e-20):
@@ -252,13 +247,6 @@ class Hard_Mask(nn.Module):
             nn.ReLU()
         )
 
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-
     def forward(self, feat, temp):
 
         feat = feat.view(-1, self.input_dim)
@@ -271,22 +259,6 @@ class Hard_Mask(nn.Module):
 
         return z1
 
-
-class Soft_Mask(nn.Module):
-
-    def __init__(self, input_dim, output_dim):
-        super(Soft_Mask, self).__init__()
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-
-        self.fc = nn.Sequential(
-            nn.Linear(self.input_dim, self.output_dim),
-            nn.Sigmoid()
-        )
-
-        self.dropout = nn.Dropout(0.2)
-
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -294,15 +266,45 @@ class Soft_Mask(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-    def forward(self, feat):
 
-        feat = feat.view(-1, self.input_dim)
+class RecFeat(nn.Module):
 
-        feat_new = self.fc(feat).view(1, -1, self.output_dim)
+    def __init__(self, x_dim, h_dim, batch_size, n_layers):
 
-        #feat_new = self.dropout(feat_new)
+        super(RecFeat, self).__init__()
 
-        return feat_new
+        self.x_dim = x_dim
+        self.h_dim = h_dim
+        self.output_dim = h_dim
+        self.n_layers = n_layers
+        self.lstm = nn.LSTM(input_size=x_dim, hidden_size=h_dim, num_layers=n_layers, dropout=0.2)
+        self.batch_size = batch_size
+        self.dropout = nn.Dropout(0.2)
+        self.hidden = self.init_hidden()
+
+    def init_hidden(self):
+        if torch.cuda.is_available():
+            return (Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)).cuda(),
+                    Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)).cuda())
+        else:
+            return (Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)),
+                    Variable(torch.zeros(self.n_layers, self.batch_size, self.h_dim)))
+
+    def init_test_hidden(self):
+        if torch.cuda.is_available():
+            return (Variable(torch.zeros(self.n_layers, 1, self.h_dim)).cuda(),
+                    Variable(torch.zeros(self.n_layers, 1, self.h_dim)).cuda())
+        else:
+            return (Variable(torch.zeros(self.n_layers, 1, self.h_dim)),
+                    Variable(torch.zeros(self.n_layers, 1, self.h_dim)))
+
+    def forward(self, x):
+
+        lstm_out, self.hidden = self.lstm(x, self.hidden)
+        lstm_out = self.dropout(lstm_out)
+        lstm_out = lstm_out.view(-1, self.h_dim)
+
+        return lstm_out
 
 
 class PoseRegressor(nn.Module):
@@ -320,13 +322,6 @@ class PoseRegressor(nn.Module):
 
         self.dropout = nn.Dropout(0.2)
 
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-
     def forward(self, feat):
 
         feat = feat.view(-1, self.feature_dim)
@@ -339,3 +334,10 @@ class PoseRegressor(nn.Module):
         pose = pose.view(pose.size(0), 1, 6)
 
         return pose
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
