@@ -71,13 +71,6 @@ class FlowNet(nn.Module):
         self.upsampled_flow4_to_3 = nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=False)
         self.upsampled_flow3_to_2 = nn.ConvTranspose2d(2, 2, 4, 2, 1, bias=False)
 
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.xavier_uniform_(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-
     def forward(self, target_image, ref_img):
 
         s = target_image.size()
@@ -96,6 +89,13 @@ class FlowNet(nn.Module):
 
         return features
 
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
 
 class Fc_Flownet(nn.Module):
 
@@ -111,13 +111,6 @@ class Fc_Flownet(nn.Module):
 
         self.dropout = nn.Dropout(0.2)
 
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-
     def forward(self, feat):
 
         feat = feat.view(-1, self.input_dim)
@@ -127,6 +120,13 @@ class Fc_Flownet(nn.Module):
         # feat_new = self.dropout(feat_new)
 
         return feat_new
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
 
 
 class RecImu(nn.Module):

@@ -22,8 +22,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 parser = argparse.ArgumentParser(description='Selective Sensor Fusion on KITTI',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-parser.add_argument('data', metavar='DIR', help='path to dataset')
-parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
+parser.add_argument('data', default='./dataset_test0910', metavar='DIR', help='path to dataset')
+parser.add_argument('--flownet_path', default='./pretrain/flownets_EPE1.951.pth.tar', metavar='DIR', help='path to pretrained flownet model')
+parser.add_argument('--sequence_length', type=int, metavar='N', help='sequence length for training', default=3)
 parser.add_argument('--rotation-mode', default='euler', type=str, choices=['euler', 'quat'],
                     help='rotation mode for PoseExpnet : euler (yaw,pitch,roll) or quaternion (last 3 coefficients)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
@@ -41,6 +42,13 @@ parser.add_argument('--seed', default=0, type=int, help='seed for random functio
 parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH',
                     help='csv where to save per-epoch train and valid stats')
 
+parser.add_argument('--fusion_mode', default=3, type=int, choices=[0, 1, 2, 3],
+                    help='0: vision only 1: direct 2: soft 3: hard')
+parser.add_argument('--degradation_mode', default=0, type=int, choices=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                    help='0: normal data 1: occlusion 2: blur 3: image missing \
+                          4: imu noise and bias 5: imu missing \
+                          6: spatial misalignment 7: temporal misalignment \
+                          8: vision degradation 9: all degradation')
 best_error = -1
 n_iter = 0
 
@@ -52,8 +60,7 @@ def main():
     args = parser.parse_args()
 
     n_save_model = 1
-    degradation_mode = 0
-    fusion_mode = 3
+    fusion_mode = args.fusion_mode
     # 0: vision only 1: direct 2: soft 3: hard
 
     # set saving path
@@ -84,7 +91,7 @@ def main():
         seed=args.seed,
         train=0,
         sequence_length=args.sequence_length,
-        data_degradation=degradation_mode, data_random=True
+        data_degradation=args.degradation_mode, data_random=True
     )
 
     val_set = KITTI_Loader(
@@ -93,7 +100,7 @@ def main():
         seed=args.seed,
         train=1,
         sequence_length=args.sequence_length,
-        data_degradation=degradation_mode, data_random=True
+        data_degradation=args.degradation_mode, data_random=True
     )
 
     test_set = KITTI_Loader(
@@ -102,7 +109,7 @@ def main():
         seed=args.seed,
         train=2,
         sequence_length=args.sequence_length,
-        data_degradation=degradation_mode, data_random=False
+        data_degradation=args.degradation_mode, data_random=False
     )
 
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
@@ -126,6 +133,7 @@ def main():
 
     feature_dim = 256
 
+    # Vision only, no IMU
     if fusion_mode == 0:
         feature_ext = FlowNet(args.batch_size).cuda()
         fc_flownet = Fc_Flownet(32 * 1024, feature_dim * 2).cuda()
@@ -134,6 +142,7 @@ def main():
         rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         pose_net = PoseRegressor(feature_dim * 2).cuda()
 
+    # Direct-fusion (concat)
     if fusion_mode == 1:
         feature_ext = FlowNet(args.batch_size).cuda()
         fc_flownet = Fc_Flownet(32 * 1024, feature_dim).cuda()
@@ -142,6 +151,7 @@ def main():
         rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         pose_net = PoseRegressor(feature_dim * 2).cuda()
 
+    # Soft-fusion
     if fusion_mode == 2:
         feature_ext = FlowNet(args.batch_size).cuda()
         fc_flownet = Fc_Flownet(32 * 1024, feature_dim).cuda()
@@ -150,6 +160,7 @@ def main():
         rec_feat = RecFeat(feature_dim * 2, feature_dim * 2, args.batch_size, 2).cuda()
         pose_net = PoseRegressor(feature_dim * 2).cuda()
 
+    # Hard-fusion
     if fusion_mode == 3:
         feature_ext = FlowNet(args.batch_size).cuda()
         fc_flownet = Fc_Flownet(32 * 1024, feature_dim).cuda()
@@ -160,15 +171,14 @@ def main():
 
     pose_net.init_weights()
 
-    flownet_model_path = abs_path + '../../../pretrain/flownets_EPE1.951.pth'
     pretrained_flownet = True
     if pretrained_flownet:
-        weights = torch.load(flownet_model_path)
+        weights = torch.load(args.flownet_path)
         model_dict = feature_ext.state_dict()
         update_dict = {k: v for k, v in weights['state_dict'].items() if k in model_dict}
         model_dict.update(update_dict)
         feature_ext.load_state_dict(model_dict)
-        print('restrore depth model from ' + flownet_model_path)
+        print('restrore depth model from ' + args.flownet_path)
 
     cudnn.benchmark = True
     feature_ext = torch.nn.DataParallel(feature_ext)

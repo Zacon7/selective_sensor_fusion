@@ -33,9 +33,12 @@ class KITTI_Loader(data.Dataset):
 
         self.scenes = [self.root / folder[:-1] for folder in open(scene_list_path)]
         self.transform = transform
+
         # degradation mode
-        # 0: normal data 1: occlusion 2: blur 3: image missing 4: imu noise and bias 5: imu missing
-        # 6: spatial misalignment 7: temporal misalignment 8: vision degradation 9: all degradation
+        # 0: normal data 1: occlusion 2: blur 3: image missing 
+        # 4: imu noise and bias 5: imu missing
+        # 6: spatial misalignment 7: temporal misalignment 
+        # 8: vision degradation 9: all degradation
         self.data_degradation = data_degradation
         self.sequence_length = sequence_length
         self.random = data_random
